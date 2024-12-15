@@ -110,6 +110,7 @@ impl MemTable {
         let (lower, upper) = (map_bound(lower), map_bound(upper));
         let mut iter = MemTableIteratorBuilder {
             map: self.map.clone(),
+            //会返回一个按指定范围 [lower, upper) 遍历的迭代器。
             iter_builder: |map| map.range((lower, upper)),
             item: (Bytes::new(), Bytes::new()),
         }

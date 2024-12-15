@@ -420,6 +420,7 @@ impl LsmStorageInner {
             Arc::clone(&guard)
         }; // drop global lock here
 
+        //键范围 [100, 200) 在 memtable 和 immutable memtables 都可能存在。
         let mut memtable_iters = Vec::with_capacity(snapshot.imm_memtables.len() + 1);
         memtable_iters.push(Box::new(snapshot.memtable.scan(lower, upper)));
         for memtable in snapshot.imm_memtables.iter() {
