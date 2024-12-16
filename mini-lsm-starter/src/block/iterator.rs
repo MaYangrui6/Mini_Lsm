@@ -108,6 +108,7 @@ impl BlockIterator {
 
     /// Seek to the specified position and update the current `key` and `value`
     /// Index update will be handled by caller
+    /// 通过给定的偏移量 offset 来定位到 Block 中的某个数据条目，并更新当前对象中的 key 和 value
     fn seek_to_offset(&mut self, offset: usize) {
         let mut entry = &self.block.data[offset..];
         // Since `get_u16()` will automatically move the ptr 2 bytes ahead here,
@@ -129,6 +130,7 @@ impl BlockIterator {
     /// Seek to the first key that >= `key`.
     /// Note: You should assume the key-value pairs in the block are sorted when being added by
     /// callers.
+    /// 进行二分搜索并返回第一个大于目标键的索引来实现的
     pub fn seek_to_key(&mut self, key: KeySlice) {
         let mut low = 0;
         let mut high = self.block.offsets.len();
