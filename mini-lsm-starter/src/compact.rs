@@ -145,7 +145,14 @@ impl LsmStorageInner {
         Ok(None)
     }
 
+    // trigger_flush will be executed every 50 milliseconds If the number of memtables exceed the limit, you should call force_flush_next_imm_memtable to flush a memtable.
     fn trigger_flush(&self) -> Result<()> {
+        if {
+            let state = self.state.read();
+            state.imm_memtables.len() >= self.options.num_memtable_limit
+        } {
+            self.force_flush_next_imm_memtable()?;
+        }
         Ok(())
     }
 

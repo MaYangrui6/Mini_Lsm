@@ -42,7 +42,7 @@ impl SsTableIterator {
         Ok(())
     }
 
-    //TODO 找不到key为什么要往下一个block找？
+    // 找不到key为什么要往下一个block找？ :不一定能找到，这里是处理找不到的情况，返回第一个大于这个key的key
     fn seek_to_key_inner(table: &Arc<SsTable>, key: KeySlice) -> Result<(usize, BlockIterator)> {
         let mut blk_idx = table.find_block_idx(key);
         let mut blk_iter =

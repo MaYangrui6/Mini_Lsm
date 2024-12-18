@@ -67,6 +67,7 @@ impl BlockMeta {
     }
 
     /// Decode block meta from a buffer.
+    /// 一个按特定编码规则（encode_block_meta）写入的字节序列，描述所有块的元信息。
     pub fn decode_block_meta(mut buf: &[u8]) -> Result<Vec<BlockMeta>> {
         let mut block_meta = Vec::new();
         let num = buf.get_u32() as usize;
