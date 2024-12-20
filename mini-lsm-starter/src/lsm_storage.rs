@@ -352,12 +352,14 @@ impl LsmStorageInner {
                 if let Some(bloom) = &table.bloom {
                     if bloom.may_contain(farmhash::fingerprint32(key)) {
                         iters.push(Box::new(SsTableIterator::create_and_seek_to_key(
-                            table, Key::from_slice(key),
+                            table,
+                            Key::from_slice(key),
                         )?));
                     }
                 } else {
                     iters.push(Box::new(SsTableIterator::create_and_seek_to_key(
-                        table, Key::from_slice(key),
+                        table,
+                        Key::from_slice(key),
                     )?));
                 }
             }
