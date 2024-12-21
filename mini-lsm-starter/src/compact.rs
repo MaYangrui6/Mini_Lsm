@@ -8,6 +8,12 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::iterators::concat_iterator::SstConcatIterator;
+use crate::iterators::merge_iterator::MergeIterator;
+use crate::iterators::two_merge_iterator::TwoMergeIterator;
+use crate::iterators::StorageIterator;
+use crate::lsm_storage::{LsmStorageInner, LsmStorageState};
+use crate::table::{SsTable, SsTableBuilder, SsTableIterator};
 use anyhow::Result;
 pub use leveled::{LeveledCompactionController, LeveledCompactionOptions, LeveledCompactionTask};
 use serde::{Deserialize, Serialize};
@@ -15,12 +21,6 @@ pub use simple_leveled::{
     SimpleLeveledCompactionController, SimpleLeveledCompactionOptions, SimpleLeveledCompactionTask,
 };
 pub use tiered::{TieredCompactionController, TieredCompactionOptions, TieredCompactionTask};
-use crate::iterators::concat_iterator::SstConcatIterator;
-use crate::iterators::merge_iterator::MergeIterator;
-use crate::iterators::StorageIterator;
-use crate::iterators::two_merge_iterator::TwoMergeIterator;
-use crate::lsm_storage::{LsmStorageInner, LsmStorageState};
-use crate::table::{SsTable, SsTableBuilder, SsTableIterator};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CompactionTask {
