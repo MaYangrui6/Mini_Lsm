@@ -4,8 +4,11 @@ use crate::lsm_storage::LsmStorageState;
 
 #[derive(Debug, Clone)]
 pub struct SimpleLeveledCompactionOptions {
+    // lower level number of files / upper level number of files. When the ratio is too low (upper level has too many files), we should trigger a compaction.
     pub size_ratio_percent: usize,
+    // when the number of SSTs in L0 is larger than or equal to this number, trigger a compaction of L0 and L1.
     pub level0_file_num_compaction_trigger: usize,
+    // the number of levels (excluding L0) in the LSM tree.
     pub max_levels: usize,
 }
 
@@ -33,24 +36,20 @@ impl SimpleLeveledCompactionController {
     /// Returns `None` if no compaction needs to be scheduled. The order of SSTs in the compaction task id vector matters.
     pub fn generate_compaction_task(
         &self,
-        snapshot: &LsmStorageState,
+        _snapshot: &LsmStorageState,
     ) -> Option<SimpleLeveledCompactionTask> {
         let mut level_sizes = Vec::new();
-        level_sizes.push(snapshot.l0_sstables.len());
-        for (_, files) in &snapshot.levels {
+        level_sizes.push(_snapshot.l0_sstables.len());
+        for (_,files) in &_snapshot.levels{
             level_sizes.push(files.len());
         }
-
-        for i in 0..self.options.max_levels {
-            if i == 0
-                && snapshot.l0_sstables.len() < self.options.level0_file_num_compaction_trigger
-            {
+        for i in  0..self.options.max_levels{
+            if i==0 && _snapshot.l0_sstables.len() < self.options.level0_file_num_compaction_trigger{
                 continue;
             }
-
-            let lower_level = i + 1;
-            let size_ratio = level_sizes[lower_level] as f64 / level_sizes[i] as f64;
-            if size_ratio < self.options.size_ratio_percent as f64 / 100.0 {
+            let lower_level = i+1;
+            let size_ratio=level_sizes[lower_level] as f64 /level_sizes[i] as f64;
+            if size_ratio < self.options.size_ratio_percent as f64 /100.0 {
                 println!(
                     "compaction triggered at level {} and {} with size ratio {}",
                     i, lower_level, size_ratio
@@ -58,12 +57,12 @@ impl SimpleLeveledCompactionController {
                 return Some(SimpleLeveledCompactionTask {
                     upper_level: if i == 0 { None } else { Some(i) },
                     upper_level_sst_ids: if i == 0 {
-                        snapshot.l0_sstables.clone()
+                        _snapshot.l0_sstables.clone()
                     } else {
-                        snapshot.levels[i - 1].1.clone()
+                        _snapshot.levels[i - 1].1.clone()
                     },
                     lower_level,
-                    lower_level_sst_ids: snapshot.levels[lower_level - 1].1.clone(),
+                    lower_level_sst_ids: _snapshot.levels[lower_level - 1].1.clone(),
                     is_lower_level_bottom_level: lower_level == self.options.max_levels,
                 });
             }
@@ -80,35 +79,37 @@ impl SimpleLeveledCompactionController {
     /// in your implementation.
     pub fn apply_compaction_result(
         &self,
-        snapshot: &LsmStorageState,
-        task: &SimpleLeveledCompactionTask,
-        output: &[usize],
+        _snapshot: &LsmStorageState,
+        _task: &SimpleLeveledCompactionTask,
+        _output: &[usize],
     ) -> (LsmStorageState, Vec<usize>) {
-        let mut snapshot = snapshot.clone();
+        let mut snapshot = _snapshot.clone();
         let mut files_to_remove = Vec::new();
-        if let Some(upper_level) = task.upper_level {
+        // 如果 upper_level 存在
+        if let Some(upper_level) = _task.upper_level{
+            // 验证 SSTables 是否匹配
             assert_eq!(
-                task.upper_level_sst_ids,
+                _task.upper_level_sst_ids,
                 snapshot.levels[upper_level - 1].1,
                 "sst mismatched"
             );
             files_to_remove.extend(&snapshot.levels[upper_level - 1].1);
             snapshot.levels[upper_level - 1].1.clear();
-        } else {
+        }else {
             assert_eq!(
-                task.upper_level_sst_ids, snapshot.l0_sstables,
+                _task.upper_level_sst_ids, snapshot.l0_sstables,
                 "sst mismatched"
             );
             files_to_remove.extend(&snapshot.l0_sstables);
             snapshot.l0_sstables.clear();
         }
         assert_eq!(
-            task.lower_level_sst_ids,
-            snapshot.levels[task.lower_level - 1].1,
+            _task.lower_level_sst_ids,
+            snapshot.levels[_task.lower_level - 1].1,
             "sst mismatched"
         );
-        files_to_remove.extend(&snapshot.levels[task.lower_level - 1].1);
-        snapshot.levels[task.lower_level - 1].1 = output.to_vec();
+        files_to_remove.extend(&snapshot.levels[_task.lower_level - 1].1);
+        snapshot.levels[_task.lower_level - 1].1 = _output.to_vec();
         (snapshot, files_to_remove)
     }
 }
