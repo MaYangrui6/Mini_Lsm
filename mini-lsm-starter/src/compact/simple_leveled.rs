@@ -40,16 +40,18 @@ impl SimpleLeveledCompactionController {
     ) -> Option<SimpleLeveledCompactionTask> {
         let mut level_sizes = Vec::new();
         level_sizes.push(_snapshot.l0_sstables.len());
-        for (_,files) in &_snapshot.levels{
+        for (_, files) in &_snapshot.levels {
             level_sizes.push(files.len());
         }
-        for i in  0..self.options.max_levels{
-            if i==0 && _snapshot.l0_sstables.len() < self.options.level0_file_num_compaction_trigger{
+        for i in 0..self.options.max_levels {
+            if i == 0
+                && _snapshot.l0_sstables.len() < self.options.level0_file_num_compaction_trigger
+            {
                 continue;
             }
-            let lower_level = i+1;
-            let size_ratio=level_sizes[lower_level] as f64 /level_sizes[i] as f64;
-            if size_ratio < self.options.size_ratio_percent as f64 /100.0 {
+            let lower_level = i + 1;
+            let size_ratio = level_sizes[lower_level] as f64 / level_sizes[i] as f64;
+            if size_ratio < self.options.size_ratio_percent as f64 / 100.0 {
                 println!(
                     "compaction triggered at level {} and {} with size ratio {}",
                     i, lower_level, size_ratio
@@ -86,7 +88,7 @@ impl SimpleLeveledCompactionController {
         let mut snapshot = _snapshot.clone();
         let mut files_to_remove = Vec::new();
         // 如果 upper_level 存在
-        if let Some(upper_level) = _task.upper_level{
+        if let Some(upper_level) = _task.upper_level {
             // 验证 SSTables 是否匹配
             assert_eq!(
                 _task.upper_level_sst_ids,
@@ -95,7 +97,7 @@ impl SimpleLeveledCompactionController {
             );
             files_to_remove.extend(&snapshot.levels[upper_level - 1].1);
             snapshot.levels[upper_level - 1].1.clear();
-        }else {
+        } else {
             assert_eq!(
                 _task.upper_level_sst_ids, snapshot.l0_sstables,
                 "sst mismatched"

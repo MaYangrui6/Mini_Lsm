@@ -119,6 +119,7 @@ impl LsmStorageInner {
         mut iter: impl for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>,
         compact_to_bottom_level: bool,
     ) -> Result<Vec<Arc<SsTable>>> {
+        // let _state_lock = self.state_lock.lock();
         let mut builder = None;
         let mut new_sst = Vec::new();
 
@@ -280,6 +281,7 @@ impl LsmStorageInner {
     }
 
     fn trigger_compaction(&self) -> Result<()> {
+        let _state_lock = self.state_lock.lock(); // 全程持有锁
         let snapshot = {
             let state = self.state.read();
             state.clone()
@@ -290,39 +292,52 @@ impl LsmStorageInner {
         let Some(task) = task else {
             return Ok(());
         };
+        self.dump_structure();
         println!("running compaction task: {:?}", task);
+        println!(
+            "before compact l0 number {:?}",
+            self.state.read().l0_sstables.len()
+        );
         let sstables = self.compact(&task)?;
-        let files_added = sstables.len();
+        println!(
+            "after compact l0 number {:?}",
+            self.state.read().l0_sstables.len()
+        );
         let output = sstables.iter().map(|x| x.sst_id()).collect::<Vec<_>>();
         let ssts_to_remove = {
-            let _state_lock = self.state_lock.lock();
-            let (mut snapshot, files_to_remove) = self
-                .compaction_controller
-                .apply_compaction_result(&self.state.read(), &task, &output);
-            let mut ssts_to_remove = Vec::with_capacity(files_to_remove.len());
-            for file_to_remove in &files_to_remove {
-                let result = snapshot.sstables.remove(file_to_remove);
-                assert!(result.is_some());
-                ssts_to_remove.push(result.unwrap());
-            }
+            // let state_lock = self.state_lock.lock();
+            let mut snapshot = self.state.read().as_ref().clone();
             let mut new_sst_ids = Vec::new();
             for file_to_add in sstables {
                 new_sst_ids.push(file_to_add.sst_id());
                 let result = snapshot.sstables.insert(file_to_add.sst_id(), file_to_add);
                 assert!(result.is_none());
             }
+            let (mut snapshot, files_to_remove) = self
+                .compaction_controller
+                .apply_compaction_result(&snapshot, &task, &output);
+
+            let mut ssts_to_remove = Vec::with_capacity(files_to_remove.len());
+            for file_to_remove in &files_to_remove {
+                let result = snapshot.sstables.remove(file_to_remove);
+                assert!(result.is_some(), "cannot remove {}.sst", file_to_remove);
+                ssts_to_remove.push(result.unwrap());
+            }
             let mut state = self.state.write();
             *state = Arc::new(snapshot);
+            drop(state);
             ssts_to_remove
         };
         println!(
-            "compaction finished: {} files removed, {} files added",
+            "compaction finished: {} files removed, {} files added, output={:?}",
             ssts_to_remove.len(),
-            files_added
+            output.len(),
+            output
         );
         for sst in ssts_to_remove {
             std::fs::remove_file(self.path_of_sst(sst.sst_id()))?;
         }
+
         Ok(())
     }
 
@@ -356,9 +371,12 @@ impl LsmStorageInner {
             let state = self.state.read();
             state.imm_memtables.len() >= self.options.num_memtable_limit
         } {
+            println!(
+                "execution force_flush_next_imm_memtable {:?}",
+                self.state.read().l0_sstables.len()
+            );
             self.force_flush_next_imm_memtable()?;
         }
-
         Ok(())
     }
 
