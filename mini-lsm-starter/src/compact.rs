@@ -22,6 +22,7 @@ use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
 use crate::key::KeySlice;
 use crate::lsm_storage::{LsmStorageInner, LsmStorageState};
+use crate::manifest::ManifestRecord;
 use crate::table::{SsTable, SsTableBuilder, SsTableIterator};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -192,6 +193,13 @@ impl LsmStorageInner {
                 lower_level: _,
                 lower_level_sst_ids,
                 ..
+            })
+            | CompactionTask::Leveled(LeveledCompactionTask {
+                upper_level,
+                upper_level_sst_ids,
+                lower_level: _,
+                lower_level_sst_ids,
+                ..
             }) => match upper_level {
                 Some(_) => {
                     let mut upper_ssts = Vec::with_capacity(upper_level_sst_ids.len());
@@ -340,6 +348,12 @@ impl LsmStorageInner {
             let mut state = self.state.write();
             *state = Arc::new(snapshot);
             drop(state);
+            // flush in manifest for compaction
+            self.sync_dir()?;
+            self.manifest
+                .as_ref()
+                .unwrap()
+                .add_record(&_state_lock, ManifestRecord::Compaction(task, new_sst_ids))?;
             ssts_to_remove
         };
         println!(
@@ -351,7 +365,7 @@ impl LsmStorageInner {
         for sst in ssts_to_remove {
             std::fs::remove_file(self.path_of_sst(sst.sst_id()))?;
         }
-
+        self.sync_dir()?;
         Ok(())
     }
 
