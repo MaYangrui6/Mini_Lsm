@@ -221,6 +221,7 @@ impl LeveledCompactionController {
             .collect::<Vec<_>>();
         assert!(lower_level_sst_ids_set.is_empty());
         new_lower_level_ssts.extend(output);
+        eprintln!("new_lower_level_ssts: {:?}", new_lower_level_ssts);
         new_lower_level_ssts.sort_by(|x, y| {
             snapshot
                 .sstables
