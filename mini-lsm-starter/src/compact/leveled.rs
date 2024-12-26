@@ -221,15 +221,19 @@ impl LeveledCompactionController {
             .collect::<Vec<_>>();
         assert!(lower_level_sst_ids_set.is_empty());
         new_lower_level_ssts.extend(output);
-        eprintln!("new_lower_level_ssts: {:?}", new_lower_level_ssts);
-        new_lower_level_ssts.sort_by(|x, y| {
-            snapshot
-                .sstables
-                .get(x)
-                .unwrap()
-                .first_key()
-                .cmp(snapshot.sstables.get(y).unwrap().first_key())
-        });
+        println!("new_lower_level_ssts: {:?}", new_lower_level_ssts);
+        // 在清单恢复阶段，SST 文件并未加载到内存中。换句话说，snapshot.sstables 可能并没有实际的 SST 文件内容。
+        // 因此，排序操作依赖于一个假设：这些 SST 文件已经加载并且你可以访问它们的 first_key，但实际上这个假设在清单恢复时并不成立。
+        if !in_recovery {
+            new_lower_level_ssts.sort_by(|x, y| {
+                snapshot
+                    .sstables
+                    .get(x)
+                    .unwrap()
+                    .first_key()
+                    .cmp(snapshot.sstables.get(y).unwrap().first_key())
+            });
+        }
         snapshot.levels[task.lower_level - 1].1 = new_lower_level_ssts;
         (snapshot, files_to_remove)
     }
