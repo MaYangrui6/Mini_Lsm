@@ -455,7 +455,7 @@ impl LsmStorageInner {
             Arc::clone(&guard)
         }; // drop global lock here
 
-        // Search on the current memtable.
+        // 1、Search on the current memtable.
         if let Some(value) = snapshot.memtable.get(key) {
             if value.is_empty() {
                 // found tomestone, return key not exists
@@ -464,7 +464,7 @@ impl LsmStorageInner {
             return Ok(Some(value));
         }
 
-        // Search on immutable memtables.
+        // 2、Search on immutable memtables.
         for memtable in snapshot.imm_memtables.iter() {
             if let Some(value) = memtable.get(key) {
                 if value.is_empty() {
@@ -475,8 +475,8 @@ impl LsmStorageInner {
             }
         }
 
+        // 3、search on l0
         let mut l0_iters = Vec::with_capacity(snapshot.l0_sstables.len());
-
         let keep_table = |key: &[u8], table: &SsTable| {
             if key_within(key, table.first_key().raw_ref(), table.last_key().raw_ref()) {
                 if let Some(bloom) = &table.bloom {
@@ -500,6 +500,8 @@ impl LsmStorageInner {
             }
         }
         let l0_iter = MergeIterator::create(l0_iters);
+
+        // 4、search on levels
         let mut level_iters = Vec::with_capacity(snapshot.levels.len());
         for (_, level_sst_ids) in &snapshot.levels {
             let mut level_ssts = Vec::with_capacity(snapshot.levels[0].1.len());
@@ -509,6 +511,7 @@ impl LsmStorageInner {
                     level_ssts.push(table);
                 }
             }
+            // SstConcatIterator在search key时会检查sst_lists的有序性
             let level_iter =
                 SstConcatIterator::create_and_seek_to_key(level_ssts, Key::from_slice(key))?;
             level_iters.push(Box::new(level_iter));
@@ -523,41 +526,46 @@ impl LsmStorageInner {
     }
 
     /// Write a batch of data into the storage. Implement in week 2 day 7.
-    pub fn write_batch<T: AsRef<[u8]>>(&self, _batch: &[WriteBatchRecord<T>]) -> Result<()> {
-        unimplemented!()
+    pub fn write_batch<T: AsRef<[u8]>>(&self, batch: &[WriteBatchRecord<T>]) -> Result<()> {
+        for record in batch {
+            match record {
+                WriteBatchRecord::Del(key) => {
+                    let key = key.as_ref();
+                    assert!(!key.is_empty(), "key cannot be empty");
+                    let size;
+                    {
+                        let guard = self.state.read();
+                        guard.memtable.put(key, b"")?;
+                        size = guard.memtable.approximate_size();
+                    }
+                    self.try_freeze(size)?;
+                }
+                WriteBatchRecord::Put(key, value) => {
+                    let key = key.as_ref();
+                    let value = value.as_ref();
+                    assert!(!key.is_empty(), "key cannot be empty");
+                    assert!(!value.is_empty(), "value cannot be empty");
+                    let size;
+                    {
+                        let guard = self.state.read();
+                        guard.memtable.put(key, value)?;
+                        size = guard.memtable.approximate_size();
+                    }
+                    self.try_freeze(size)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Put a key-value pair into the storage by writing into the current memtable.
     pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
-        assert!(!value.is_empty(), "value cannot be empty");
-        assert!(!key.is_empty(), "key cannot be empty");
-
-        let size;
-        {
-            let guard = self.state.read();
-            guard.memtable.put(key, value)?;
-            size = guard.memtable.approximate_size();
-        }
-
-        self.try_freeze(size)?;
-
-        Ok(())
+        self.write_batch(&[WriteBatchRecord::Put(key, value)])
     }
 
     /// Remove a key from the storage by writing an empty value.
     pub fn delete(&self, key: &[u8]) -> Result<()> {
-        assert!(!key.is_empty(), "key cannot be empty");
-
-        let size;
-        {
-            let guard = self.state.read();
-            guard.memtable.put(key, b"")?;
-            size = guard.memtable.approximate_size();
-        }
-
-        self.try_freeze(size)?;
-
-        Ok(())
+        self.write_batch(&[WriteBatchRecord::Del(key)])
     }
 
     fn try_freeze(&self, estimated_size: usize) -> Result<()> {
