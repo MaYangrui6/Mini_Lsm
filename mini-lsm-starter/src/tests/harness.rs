@@ -94,6 +94,11 @@ where
     I: for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>,
 {
     for (k, v) in expected {
+        let mut key = iter.key().for_testing_key_ref();
+        let mut value = iter.value();
+        let key_str = String::from_utf8_lossy(&key);  // 将字节转换为字符串
+        let value_str = String::from_utf8_lossy(&value);  // 将字节转换为字符串
+        println!("Key: {:?}, Value: {:?}", key_str, value_str);
         assert!(iter.is_valid());
         assert_eq!(
             k,
@@ -440,3 +445,33 @@ pub fn construct_merge_iterator_over_storage(
     }
     MergeIterator::create(iters)
 }
+
+// pub fn construct_merge_iterator_over_storage(
+//     state: &LsmStorageState,
+// ) -> MergeIterator<SsTableIterator> {
+//     let mut iters = Vec::new();
+//
+//     // 创建并打印 L0 层的迭代器
+//     for t in &state.l0_sstables {
+//         let iter = SsTableIterator::create_and_seek_to_first(state.sstables.get(t).cloned().unwrap())
+//             .unwrap();
+//         println!("L0 SST iterator created for key: {}", String::from_utf8_lossy(iter.key().key_ref()));
+//         iters.push(Box::new(iter));
+//     }
+//
+//     // 创建并打印其他层的迭代器
+//     for (_, files) in &state.levels {
+//         for f in files {
+//             let iter = SsTableIterator::create_and_seek_to_first(state.sstables.get(f).cloned().unwrap())
+//                 .unwrap();
+//             println!("Levels SST iterator created for key: {}", String::from_utf8_lossy(iter.key().key_ref()));
+//             iters.push(Box::new(iter));
+//         }
+//     }
+//
+//     let merge_iterator = MergeIterator::create(iters);
+//
+//     // 如果你想在每次迭代时打印键值对，可以修改 `MergeIterator` 的 `next` 函数或其内部迭代器的 `next` 函数：
+//     merge_iterator
+// }
+

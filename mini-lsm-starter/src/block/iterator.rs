@@ -33,9 +33,13 @@ impl Block {
         //buf.get_u16() 是跳过了 overlap 字段，因为第一个键的 overlap 始终为 0
         //它会修改 buf 的指针，推进切片的起始位置。这个操作不会改变 buf 的生命周期，只是改变了 buf 的视图
         buf.get_u16();
-        let key_len = buf.get_u16();
-        let key = &buf[..key_len as usize];
-        KeyVec::from_vec(key.to_vec())
+        // let key_len = buf.get_u16();
+        // let key = &buf[..key_len as usize];
+        // KeyVec::from_vec(key.to_vec())
+        let key_len = buf.get_u16() as usize;
+        let key = &buf[..key_len];
+        buf.advance(key_len);
+        KeyVec::from_vec_with_ts(key.to_vec(), buf.get_u64())
     }
 }
 
@@ -117,11 +121,16 @@ impl BlockIterator {
         let key_len = entry.get_u16() as usize;
         let key = &entry[..key_len];
         self.key.clear();
-        self.key.append(&self.first_key.raw_ref()[..overlap_len]);
+        self.key.append(&self.first_key.key_ref()[..overlap_len]);
         self.key.append(key);
         entry.advance(key_len);
+        let ts = entry.get_u64();
+        self.key.set_ts(ts);
         let value_len = entry.get_u16() as usize;
-        let value_offset_begin = offset + SIZEOF_U16 + SIZEOF_U16 + key_len + SIZEOF_U16;
+        // REMEMBER TO CHANGE THIS every time you change the encoding!
+        let value_offset_begin =
+            offset + SIZEOF_U16 + SIZEOF_U16 + std::mem::size_of::<u64>() + key_len + SIZEOF_U16;
+        // offset + overlap + remaining_key_len + ts + key_context_len + value_len
         let value_offset_end = value_offset_begin + value_len;
         self.value_range = (value_offset_begin, value_offset_end);
         entry.advance(value_len);

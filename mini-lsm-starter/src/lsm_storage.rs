@@ -20,7 +20,7 @@ use crate::iterators::concat_iterator::SstConcatIterator;
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
-use crate::key::{Key, KeySlice};
+use crate::key::{Key, KeySlice, TS_RANGE_BEGIN};
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::{Manifest, ManifestRecord};
 use crate::mem_table::{map_bound, MemTable};
@@ -478,7 +478,7 @@ impl LsmStorageInner {
         // 3、search on l0
         let mut l0_iters = Vec::with_capacity(snapshot.l0_sstables.len());
         let keep_table = |key: &[u8], table: &SsTable| {
-            if key_within(key, table.first_key().raw_ref(), table.last_key().raw_ref()) {
+            if key_within(key, table.first_key().key_ref(), table.last_key().key_ref()) {
                 if let Some(bloom) = &table.bloom {
                     if bloom.may_contain(farmhash::fingerprint32(key)) {
                         return true;
@@ -495,7 +495,7 @@ impl LsmStorageInner {
             if keep_table(key, &table) {
                 l0_iters.push(Box::new(SsTableIterator::create_and_seek_to_key(
                     table,
-                    Key::from_slice(key),
+                    KeySlice::from_slice(key, TS_RANGE_BEGIN),
                 )?));
             }
         }
@@ -512,14 +512,16 @@ impl LsmStorageInner {
                 }
             }
             // SstConcatIterator在search key时会检查sst_lists的有序性
-            let level_iter =
-                SstConcatIterator::create_and_seek_to_key(level_ssts, Key::from_slice(key))?;
+            let level_iter = SstConcatIterator::create_and_seek_to_key(
+                level_ssts,
+                KeySlice::from_slice(key, TS_RANGE_BEGIN),
+            )?;
             level_iters.push(Box::new(level_iter));
         }
 
         let iter = TwoMergeIterator::create(l0_iter, MergeIterator::create(level_iters))?;
 
-        if iter.is_valid() && iter.key() == Key::from_slice(key) && !iter.value().is_empty() {
+        if iter.is_valid() && iter.key().key_ref() == key && !iter.value().is_empty() {
             return Ok(Some(Bytes::copy_from_slice(iter.value())));
         }
         Ok(None)
@@ -727,17 +729,20 @@ impl LsmStorageInner {
             if range_overlap(
                 lower,
                 upper,
-                table.first_key().raw_ref(),
-                table.last_key().raw_ref(),
+                table.first_key().key_ref(),
+                table.last_key().key_ref(),
             ) {
                 let iter = match lower {
-                    Bound::Included(key) => {
-                        SsTableIterator::create_and_seek_to_key(table, Key::from_slice(key))?
-                    }
+                    Bound::Included(key) => SsTableIterator::create_and_seek_to_key(
+                        table,
+                        KeySlice::from_slice(key, TS_RANGE_BEGIN),
+                    )?,
                     Bound::Excluded(key) => {
-                        let mut iter =
-                            SsTableIterator::create_and_seek_to_key(table, Key::from_slice(key))?;
-                        if iter.is_valid() && iter.key() == Key::from_slice(key) {
+                        let mut iter = SsTableIterator::create_and_seek_to_key(
+                            table,
+                            Key::from_slice(key, TS_RANGE_BEGIN),
+                        )?;
+                        if iter.is_valid() && iter.key().key_ref() == key {
                             iter.next()?;
                         }
                         iter
@@ -758,23 +763,24 @@ impl LsmStorageInner {
                 if range_overlap(
                     lower,
                     upper,
-                    table.first_key().raw_ref(),
-                    table.last_key().raw_ref(),
+                    table.first_key().key_ref(),
+                    table.last_key().key_ref(),
                 ) {
                     level_ssts.push(table);
                 }
             }
 
             let level_iter = match lower {
-                Bound::Included(key) => {
-                    SstConcatIterator::create_and_seek_to_key(level_ssts, Key::from_slice(key))?
-                }
+                Bound::Included(key) => SstConcatIterator::create_and_seek_to_key(
+                    level_ssts,
+                    Key::from_slice(key, TS_RANGE_BEGIN),
+                )?,
                 Bound::Excluded(key) => {
                     let mut iter = SstConcatIterator::create_and_seek_to_key(
                         level_ssts,
-                        Key::from_slice(key),
+                        Key::from_slice(key, TS_RANGE_BEGIN),
                     )?;
-                    if iter.is_valid() && iter.key() == Key::from_slice(key) {
+                    if iter.is_valid() && iter.key().key_ref() == key {
                         iter.next()?;
                     }
                     iter
