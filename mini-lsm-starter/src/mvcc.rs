@@ -8,7 +8,8 @@ use std::{
     collections::{BTreeMap, HashSet},
     sync::Arc,
 };
-
+use std::sync::atomic::AtomicBool;
+use crossbeam_skiplist::SkipMap;
 use parking_lot::Mutex;
 
 use crate::lsm_storage::LsmStorageInner;
@@ -26,6 +27,7 @@ pub(crate) struct CommittedTxnData {
 pub(crate) struct LsmMvccInner {
     pub(crate) write_lock: Mutex<()>,
     pub(crate) commit_lock: Mutex<()>,
+    // 存储当前时间戳和 Watermark
     pub(crate) ts: Arc<Mutex<(u64, Watermark)>>,
     pub(crate) committed_txns: Arc<Mutex<BTreeMap<u64, CommittedTxnData>>>,
 }
@@ -55,6 +57,14 @@ impl LsmMvccInner {
     }
 
     pub fn new_txn(&self, inner: Arc<LsmStorageInner>, serializable: bool) -> Arc<Transaction> {
-        unimplemented!()
+        let ts = self.ts.lock();
+        let read_ts = ts.0;
+        Arc::new(Transaction {
+            inner,
+            read_ts,
+            local_storage: Arc::new(SkipMap::new()),
+            committed: Arc::new(AtomicBool::new(false)),
+            key_hashes: None,
+        })
     }
 }
